@@ -19,10 +19,13 @@
     "cloudinary": "^2.10.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
+    "html5-qrcode": "^2.3.8",
     "lucide-react": "^1.14.0",
     "next": "16.2.6",
     "next-auth": "^5.0.0-beta.31",
+    "ngrok": "5.0.0-beta.2",
     "pg": "^8.20.0",
+    "qrcode.react": "^4.2.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-webcam": "^7.2.0",
@@ -42,6 +45,7 @@
     "eslint-config-next": "16.2.6",
     "prisma": "6.4.1",
     "tailwindcss": "^4",
+    "tsx": "^4.22.3",
     "typescript": "^5"
   }
 }

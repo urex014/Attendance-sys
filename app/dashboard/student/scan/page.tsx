@@ -1,138 +1,169 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { Scanner } from '@yudiel/react-qr-scanner';
-import { ArrowLeft, Camera, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { useEffect, useRef, useState } from "react";
+import { Html5Qrcode } from "html5-qrcode";
+import { useRouter } from "next/navigation";
 
-type ScanStatus = 'idle' | 'loading' | 'success' | 'error';
-
-export default function ScanAttendancePage() {
+export default function StudentScanPage() {
   const router = useRouter();
-  const [status, setStatus] = useState<ScanStatus>('idle');
-  const [message, setMessage] = useState('');
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const hasScannedRef = useRef(false);
 
-  const handleScan = async (detectedCodes: { rawValue: string }[]) => {
-    if (status !== 'idle' || detectedCodes.length === 0) return;
+  const [message, setMessage] = useState("");
+  const [isScanning, setIsScanning] = useState(false);
+  const [manualToken, setManualToken] = useState("");
 
-    const qrToken = detectedCodes[0].rawValue;
-    setStatus('loading');
+  async function stopScanner() {
+    if (scannerRef.current) {
+      try {
+        await scannerRef.current.stop();
+        await scannerRef.current.clear();
+      } catch (error) {
+        console.log("Scanner already stopped", error);
+      } finally {
+        scannerRef.current = null;
+        setIsScanning(false);
+      }
+    }
+  }
+
+  async function markAttendance(qrToken: string) {
+    if (!qrToken) {
+      setMessage("QR token is required.");
+      return;
+    }
 
     try {
-      // Hit your new /mark route
-      const res = await fetch('/api/attendance/mark', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      setMessage("Marking attendance...");
+
+      const res = await fetch("/api/attendance/mark", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({ qrToken }),
       });
 
       const data = await res.json();
 
-      if (res.ok) {
-        setStatus('success');
-        // Extract course code from the nested include in your backend
-        const courseCode = data.attendance?.session?.course?.courseCode || 'Class';
-        setMessage(`Successfully checked into ${courseCode}!`);
-        
-        setTimeout(() => router.push('/dashboard/student'), 3000);
-      } else {
-        setStatus('error');
-        setMessage(data.message || 'Failed to verify attendance.');
+      if (!res.ok) {
+        setMessage(data.message || "Failed to mark attendance.");
+        return;
       }
-    } catch (error) {
-      setStatus('error');
-      setMessage('Network error. Please try again.');
-    }
-  };
 
-  const resetScanner = () => {
-    setStatus('idle');
-    setMessage('');
-  };
+      setMessage("Attendance marked successfully");
+
+      setTimeout(() => {
+        router.push("/dashboard/student");
+      }, 1200);
+    } catch (error) {
+      console.error(error);
+      setMessage("Something went wrong.");
+    }
+  }
+
+  async function startScanner() {
+    if (isScanning) return;
+
+    hasScannedRef.current = false;
+
+    const scanner = new Html5Qrcode("qr-reader");
+    scannerRef.current = scanner;
+
+    setIsScanning(true);
+    setMessage("Scanning...");
+
+    try {
+      await scanner.start(
+        { facingMode: "environment" },
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 250 },
+        },
+        async (decodedText) => {
+          if (hasScannedRef.current) return;
+
+          hasScannedRef.current = true;
+
+          await stopScanner();
+          await markAttendance(decodedText);
+        },
+        () => {}
+      );
+    } catch (error) {
+      console.error(error);
+      setMessage("Camera could not start. Use the manual token option.");
+      setIsScanning(false);
+      scannerRef.current = null;
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      stopScanner();
+    };
+  }, []);
 
   return (
-    <div className="min-h-screen bg-zinc-50/50 flex flex-col items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        
-        <Link 
-          href="/dashboard/student" 
-          className="inline-flex items-center text-sm font-medium text-zinc-500 hover:text-zinc-900 mb-6 transition-colors"
+    <main className="min-h-screen bg-zinc-50 p-6 flex items-center justify-center">
+      <div className="w-full max-w-md bg-white border border-zinc-200 rounded-xl shadow-sm p-6 space-y-5">
+        <div>
+          <h1 className="text-2xl font-bold text-zinc-900">
+            Scan Attendance QR
+          </h1>
+          <p className="text-sm text-zinc-500 mt-1">
+            Point your camera at the lecturer’s QR code.
+          </p>
+        </div>
+
+        <div id="qr-reader" className="w-full overflow-hidden rounded-lg" />
+
+        {message && (
+          <div className="text-sm bg-zinc-100 border border-zinc-200 rounded-lg p-3">
+            {message}
+          </div>
+        )}
+
+        <button
+          onClick={startScanner}
+          disabled={isScanning}
+          className="w-full bg-zinc-900 text-white rounded-lg py-3 text-sm font-medium disabled:bg-zinc-500"
         >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Dashboard
-        </Link>
+          {isScanning ? "Scanning..." : "Start Camera Scan"}
+        </button>
 
-        <div className="bg-white rounded-2xl shadow-xl border border-zinc-200 overflow-hidden">
-          <div className="p-6 text-center border-b border-zinc-100">
-            <h1 className="text-xl font-bold text-zinc-900">Class Attendance</h1>
-            <p className="text-sm text-zinc-500 mt-1">
-              Position the lecturer's QR code inside the frame.
-            </p>
-          </div>
+        <button
+          onClick={stopScanner}
+          disabled={!isScanning}
+          className="w-full bg-red-600 text-white rounded-lg py-3 text-sm font-medium disabled:bg-red-300"
+        >
+          Stop Scanner
+        </button>
 
-          <div className="relative bg-zinc-950 aspect-square flex items-center justify-center">
-            {status === 'idle' && (
-              <Scanner
-                onScan={handleScan}
-                formats={['qr_code']}
-                components={{finder: true }}
-                styles={{ container: { width: '100%', height: '100%' } }}
-              />
-            )}
+        <div className="pt-4 border-t space-y-3">
+          <p className="text-xs text-zinc-500">
+            Backup: paste QR token manually
+          </p>
 
-            {status === 'loading' && (
-              <div className="flex flex-col items-center text-white">
-                <Loader2 className="h-12 w-12 animate-spin mb-4 text-emerald-500" />
-                <p className="font-medium animate-pulse">Verifying token...</p>
-              </div>
-            )}
+          <textarea
+            value={manualToken}
+            onChange={(e) => setManualToken(e.target.value)}
+            placeholder="Paste token here"
+            className="w-full min-h-24 border border-zinc-300 rounded-lg p-3 text-sm"
+          />
 
-            {status === 'success' && (
-              <div className="flex flex-col items-center text-white animate-in zoom-in duration-300 p-6 text-center">
-                <div className="h-20 w-20 bg-emerald-500/20 rounded-full flex items-center justify-center mb-4">
-                  <CheckCircle2 className="h-10 w-10 text-emerald-400" />
-                </div>
-                <h2 className="text-2xl font-bold mb-2">Checked In!</h2>
-                <p className="text-zinc-400">{message}</p>
-              </div>
-            )}
-
-            {status === 'error' && (
-              <div className="flex flex-col items-center text-white animate-in zoom-in duration-300 p-6 text-center">
-                <div className="h-20 w-20 bg-red-500/20 rounded-full flex items-center justify-center mb-4">
-                  <XCircle className="h-10 w-10 text-red-400" />
-                </div>
-                <h2 className="text-2xl font-bold mb-2">Scan Failed</h2>
-                <p className="text-zinc-400">{message}</p>
-              </div>
-            )}
-          </div>
-
-          <div className="p-6 bg-zinc-50">
-            {status === 'error' ? (
-              <button
-                onClick={resetScanner}
-                className="w-full py-3 rounded-lg bg-zinc-900 text-white font-medium hover:bg-zinc-800 transition-colors"
-              >
-                Try Again
-              </button>
-            ) : status === 'success' ? (
-              <Link
-                href="/dashboard/student"
-                className="block w-full py-3 rounded-lg bg-emerald-600 text-white font-medium text-center hover:bg-emerald-700 transition-colors"
-              >
-                Return to Dashboard
-              </Link>
-            ) : (
-              <div className="flex items-center justify-center gap-2 text-sm text-zinc-500 font-medium">
-                <Camera className="h-4 w-4" />
-                Camera active and searching...
-              </div>
-            )}
-          </div>
+          <button
+            onClick={async () => {
+              hasScannedRef.current = true;
+              await stopScanner();
+              await markAttendance(manualToken.trim());
+            }}
+            className="w-full bg-green-600 text-white rounded-lg py-3 text-sm font-medium"
+          >
+            Submit Token
+          </button>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

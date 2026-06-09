@@ -1,17 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-import { 
-  BookOpen, 
-  Plus, 
-  Play, 
-  Clock, 
-  QrCode, 
-  CheckCircle2, 
-  AlertCircle,
-  Loader2
-} from "lucide-react";
+import { signOut } from "next-auth/react";
+import { QRCodeCanvas } from "qrcode.react";
 
 type Course = {
   id: string;
@@ -19,34 +10,77 @@ type Course = {
   courseTitle: string;
 };
 
-type ActiveSessionData = {
-  token: string;
-  expiresAt: string;
-} | null;
+type CourseSummary = {
+  course: Course;
+  sessions: {
+    id: string;
+    startsAt: string;
+    expiresAt: string;
+    qrToken: string;
+  }[];
+  activeSession: {
+    id: string;
+    startsAt: string;
+    expiresAt: string;
+    qrToken: string;
+  } | null;
+  students: {
+    id: string;
+    fullName: string;
+    identifier: string;
+    email: string | null;
+    attendedCount: number;
+    totalSessions: number;
+    percentage: number;
+    attendanceBySession: {
+      sessionId: string;
+      attended: boolean;
+    }[];
+  }[];
+};
 
 export default function LecturerDashboard() {
   const [courses, setCourses] = useState<Course[]>([]);
-  const [courseCode, setCourseCode] = useState("");
-  const [courseTitle, setCourseTitle] = useState("");
   const [selectedCourseId, setSelectedCourseId] = useState("");
+  const [summary, setSummary] = useState<CourseSummary | null>(null);
   const [durationMinutes, setDurationMinutes] = useState(10);
-  
   const [loading, setLoading] = useState(false);
-  const [isStartingSession, setIsStartingSession] = useState(false);
-  
-  // Replace alerts with UI state
-  const [uiMessage, setUiMessage] = useState<{ type: 'error' | 'success', text: string } | null>(null);
-  const [activeSession, setActiveSession] = useState<ActiveSessionData>(null);
 
   async function fetchCourses() {
     try {
       const res = await fetch("/api/courses");
       const data = await res.json();
+
       if (res.ok) {
         setCourses(data.courses || []);
+
+        if (data.courses?.length > 0 && !selectedCourseId) {
+          setSelectedCourseId(data.courses[0].id);
+        }
+      } else {
+        alert(data.message || "Failed to fetch courses");
       }
     } catch (error) {
       console.error(error);
+      alert("Error fetching courses");
+    }
+  }
+
+  async function fetchCourseSummary(courseId: string) {
+    if (!courseId) return;
+
+    try {
+      const res = await fetch(`/api/lecturer/courses/${courseId}/summary`);
+      const data = await res.json();
+
+      if (res.ok) {
+        setSummary(data);
+      } else {
+        alert(data.message || "Failed to fetch course summary");
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Error fetching course summary");
     }
   }
 
@@ -54,249 +88,376 @@ export default function LecturerDashboard() {
     fetchCourses();
   }, []);
 
-  async function createCourse() {
-    if (!courseCode || !courseTitle) {
-      setUiMessage({ type: 'error', text: "Please fill in both course fields." });
+  useEffect(() => {
+    if (selectedCourseId) {
+      fetchCourseSummary(selectedCourseId);
+    }
+  }, [selectedCourseId]);
+
+  async function startAttendance() {
+    if (!selectedCourseId) {
+      alert("Select a course first");
+      return;
+    }
+
+    if (durationMinutes < 1 || durationMinutes > 30) {
+      alert("Duration must be between 1 and 30 minutes");
       return;
     }
 
     setLoading(true);
-    setUiMessage(null);
-
-    try {
-      const res = await fetch("/api/courses", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ courseCode, courseTitle }),
-      });
-
-      const data = await res.json();
-
-      if (res.ok) {
-        setUiMessage({ type: 'success', text: `${courseCode} created successfully.` });
-        setCourseCode("");
-        setCourseTitle("");
-        fetchCourses();
-      } else {
-        setUiMessage({ type: 'error', text: data.message || "Failed to create course." });
-      }
-    } catch (error) {
-      setUiMessage({ type: 'error', text: "A network error occurred." });
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function startAttendance() {
-    if (!selectedCourseId) {
-      setUiMessage({ type: 'error', text: "Please select a course to start attendance." });
-      return;
-    }
-    if (durationMinutes < 1 || durationMinutes > 120) {
-      setUiMessage({ type: 'error', text: "Duration must be between 1 and 120 minutes." });
-      return;
-    }
-
-    setIsStartingSession(true);
-    setUiMessage(null);
-    setActiveSession(null);
 
     try {
       const res = await fetch("/api/attendance/start", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ courseId: selectedCourseId, durationMinutes }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          courseId: selectedCourseId,
+          durationMinutes,
+        }),
       });
 
       const data = await res.json();
 
       if (res.ok) {
-        // Render the session data in the UI instead of an alert
-        setActiveSession({
-          token: data.session.qrToken,
-          expiresAt: new Date(data.session.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        });
+        await fetchCourseSummary(selectedCourseId);
+        alert("Attendance started successfully");
       } else {
-        setUiMessage({ type: 'error', text: data.message || "Failed to start attendance." });
+        alert(data.message || "Failed to start attendance");
       }
     } catch (error) {
-      setUiMessage({ type: 'error', text: "Error starting attendance." });
-    } finally {
-      setIsStartingSession(false);
+      console.error(error);
+      alert("Error starting attendance");
     }
+
+    setLoading(false);
   }
 
-  const selectedCourseName = courses.find(c => c.id === selectedCourseId)?.courseCode;
+  async function endAttendance() {
+    if (!summary?.activeSession?.id) {
+      alert("No active attendance session");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/attendance/end", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sessionId: summary.activeSession.id,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        await fetchCourseSummary(selectedCourseId);
+        alert("Attendance ended successfully");
+      } else {
+        alert(data.message || "Failed to end attendance");
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Error ending attendance");
+    }
+
+    setLoading(false);
+  }
 
   return (
-    <div className="min-h-screen bg-zinc-50/50 pb-12">
-      
-      
-
-      <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 mt-8 space-y-8">
-        
-        {/* Global UI Messages */}
-        {uiMessage && (
-          <div className={`flex items-center gap-2 p-4 rounded-lg border ${
-            uiMessage.type === 'error' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'
-          }`}>
-            {uiMessage.type === 'error' ? <AlertCircle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
-            <p className="text-sm font-medium">{uiMessage.text}</p>
+    <main className="min-h-screen bg-slate-50 text-slate-800 font-sans">
+      <div className="max-w-7xl mx-auto p-6 lg:p-8 space-y-8">
+        <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900">
+              Lecturer Dashboard
+            </h1>
+            <p className="text-slate-500 mt-1">
+              Manage attendance, QR sessions, and student records.
+            </p>
           </div>
-        )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* Left Column: Course Management */}
-          <div className="lg:col-span-2 space-y-6">
-            
-            {/* Course Selection List */}
-            <div className="rounded-xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
-              <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
-                <h2 className="text-lg font-semibold tracking-tight text-zinc-900">Your Assigned Courses</h2>
-              </div>
-              
-              {courses.length === 0 ? (
-                <div className="p-12 text-center text-zinc-500 flex flex-col items-center">
-                  <BookOpen className="h-10 w-10 mb-3 text-zinc-300" />
-                  <p>You have not registered any courses yet.</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-6">
-                  {courses.map((course) => (
-                    <div
-                      key={course.id}
-                      onClick={() => setSelectedCourseId(course.id)}
-                      className={`relative flex flex-col p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                        selectedCourseId === course.id
-                          ? "border-zinc-900 bg-zinc-50"
-                          : "border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50/50"
-                      }`}
-                    >
-                      {selectedCourseId === course.id && (
-                        <div className="absolute top-4 right-4 text-zinc-900">
-                          <CheckCircle2 className="h-5 w-5" />
-                        </div>
-                      )}
-                      <span className="font-bold text-zinc-900 text-lg">{course.courseCode}</span>
-                      <span className="text-sm text-zinc-500 mt-1 line-clamp-1">{course.courseTitle}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+          <button
+            onClick={() => signOut()}
+            className="bg-slate-900 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-800"
+          >
+            Logout
+          </button>
+        </header>
 
-            {/* Add New Course Inline Form */}
-            <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
-              <h3 className="text-sm font-semibold text-zinc-900 mb-4 flex items-center gap-2">
-                <Plus className="h-4 w-4 text-zinc-500" /> Add Additional Course
-              </h3>
-              <div className="flex flex-col sm:flex-row gap-4">
-                <input
-                  type="text"
-                  placeholder="Code (e.g. CSC301)"
-                  value={courseCode}
-                  onChange={(e) => setCourseCode(e.target.value.toUpperCase())}
-                  className="w-full sm:w-1/3 h-10 px-3 text-sm rounded-md border border-zinc-200 bg-transparent placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
-                />
-                <input
-                  type="text"
-                  placeholder="Full Course Title"
-                  value={courseTitle}
-                  onChange={(e) => setCourseTitle(e.target.value)}
-                  className="w-full h-10 px-3 text-sm rounded-md border border-zinc-200 bg-transparent placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
-                />
+        <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
+          <h2 className="text-sm font-semibold text-slate-500 uppercase mb-3">
+            Courses You Teach
+          </h2>
+
+          {courses.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              You have not been assigned any course.
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {courses.map((course) => (
                 <button
-                  onClick={createCourse}
-                  disabled={loading}
-                  className="h-10 px-4 whitespace-nowrap rounded-md bg-zinc-100 text-zinc-900 text-sm font-medium hover:bg-zinc-200 transition-colors disabled:opacity-50"
+                  key={course.id}
+                  onClick={() => setSelectedCourseId(course.id)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                    selectedCourseId === course.id
+                      ? "bg-slate-900 text-white border-slate-900"
+                      : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                  }`}
                 >
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create'}
+                  {course.courseCode}
                 </button>
-              </div>
+              ))}
             </div>
-          </div>
+          )}
+        </section>
 
-          {/* Right Column: Active Session Control */}
-          <div className="space-y-6">
-            <div className="rounded-xl border border-zinc-900 bg-zinc-950 text-white shadow-lg overflow-hidden">
-              <div className="p-6">
-                <h2 className="text-lg font-semibold tracking-tight mb-1">Live Attendance</h2>
-                <p className="text-zinc-400 text-sm mb-6">Start a secure QR session for your class.</p>
+        {summary && (
+          <>
+            <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <StatCard
+                label="Course"
+                value={summary.course.courseCode}
+                accent="bg-blue-50 text-blue-600"
+              />
 
-                {!activeSession ? (
-                  <div className="space-y-5">
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Target Course</label>
-                      <div className="h-10 w-full rounded-md border border-zinc-800 bg-zinc-900 flex items-center px-3 text-sm text-zinc-300">
-                        {selectedCourseName || "Select a course from the left..."}
-                      </div>
-                    </div>
+              <StatCard
+                label="Students"
+                value={summary.students.length}
+                accent="bg-emerald-50 text-emerald-600"
+              />
 
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Duration (Minutes)</label>
-                      <div className="relative">
-                        <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
-                        <input
-                          type="number"
-                          min={1}
-                          max={120}
-                          value={durationMinutes}
-                          onChange={(e) => setDurationMinutes(Number(e.target.value))}
-                          className="w-full h-10 pl-9 pr-3 text-sm rounded-md border border-zinc-800 bg-zinc-900 text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-500"
-                        />
-                      </div>
-                    </div>
+              <StatCard
+                label="Sessions"
+                value={summary.sessions.length}
+                accent="bg-amber-50 text-amber-600"
+              />
 
-                    <button
-                      onClick={startAttendance}
-                      disabled={isStartingSession || !selectedCourseId}
-                      className="w-full h-10 mt-2 flex items-center justify-center gap-2 rounded-md bg-white text-zinc-950 text-sm font-semibold hover:bg-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {isStartingSession ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <>
-                          <Play className="h-4 w-4" /> Start Session
-                        </>
-                      )}
-                    </button>
-                  </div>
+              <StatCard
+                label="Status"
+                value={summary.activeSession ? "Live" : "Closed"}
+                accent={
+                  summary.activeSession
+                    ? "bg-emerald-50 text-emerald-600"
+                    : "bg-slate-100 text-slate-600"
+                }
+              />
+            </section>
+
+            <section className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-1 bg-white border border-slate-200 rounded-xl shadow-sm p-6 space-y-5">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900">
+                    {summary.course.courseCode}
+                  </h2>
+                  <p className="text-sm text-slate-500">
+                    {summary.course.courseTitle}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-slate-500 uppercase">
+                    Attendance Duration
+                  </label>
+
+                  <input
+                    type="number"
+                    min={1}
+                    max={30}
+                    value={durationMinutes}
+                    onChange={(e) =>
+                      setDurationMinutes(Number(e.target.value))
+                    }
+                    className="w-full border border-slate-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  />
+
+                  <p className="text-xs text-slate-500">
+                    Duration must be between 1 and 30 minutes.
+                  </p>
+                </div>
+
+                {!summary.activeSession ? (
+                  <button
+                    onClick={startAttendance}
+                    disabled={loading}
+                    className="w-full bg-emerald-600 text-white py-3 rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:bg-emerald-300"
+                  >
+                    {loading ? "Starting..." : "Start Attendance"}
+                  </button>
                 ) : (
-                  /* Active Session Output UI (Replaces the Alert!) */
-                  <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div className="flex items-center gap-2 mb-4">
-                      <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                      <span className="text-xs font-medium text-emerald-500 uppercase tracking-wide">Session Active</span>
-                    </div>
-                    
-                    <div className="bg-white p-6 rounded-lg flex flex-col items-center justify-center mb-6">
-                      <QrCode className="h-32 w-32 text-zinc-950 mb-4" />
-                      <p className="text-xs text-zinc-500 font-medium uppercase tracking-wider text-center">Session Token</p>
-                      <p className="text-xl font-mono font-bold text-zinc-950 text-center break-all">
-                        {activeSession.token}
+                  <button
+                    onClick={endAttendance}
+                    disabled={loading}
+                    className="w-full bg-red-600 text-white py-3 rounded-lg text-sm font-medium hover:bg-red-700 disabled:bg-red-300"
+                  >
+                    {loading ? "Ending..." : "End Attendance"}
+                  </button>
+                )}
+
+                {summary.activeSession && (
+                  <div className="border-t pt-5 space-y-4 text-center">
+                    <div>
+                      <p className="text-xs font-semibold uppercase text-emerald-700">
+                        Live QR Code
+                      </p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Expires{" "}
+                        {new Date(
+                          summary.activeSession.expiresAt
+                        ).toLocaleTimeString("en-NG", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
                       </p>
                     </div>
 
-                    <div className="flex justify-between items-center text-sm border-t border-zinc-800 pt-4">
-                      <span className="text-zinc-400">Auto-expires at:</span>
-                      <span className="font-semibold text-amber-400">{activeSession.expiresAt}</span>
+                    <div className="flex justify-center bg-white p-4 rounded-xl border">
+                      <QRCodeCanvas
+                        value={summary.activeSession.qrToken}
+                        size={220}
+                      />
                     </div>
 
-                    <button
-                      onClick={() => setActiveSession(null)}
-                      className="w-full h-10 mt-6 rounded-md bg-zinc-800 text-white text-sm font-medium hover:bg-zinc-700 transition-colors"
-                    >
-                      Close View
-                    </button>
+                    <p className="text-[11px] break-all text-slate-400">
+                      {summary.activeSession.qrToken}
+                    </p>
                   </div>
                 )}
               </div>
-            </div>
-          </div>
 
-        </div>
-      </main>
+              <div className="lg:col-span-2 bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                <div className="p-5 border-b border-slate-200">
+                  <h2 className="text-xl font-bold text-slate-900">
+                    Student Attendance Table
+                  </h2>
+                  <p className="text-sm text-slate-500">
+                    ✓ means attended, × means missed.
+                  </p>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="text-left p-4 font-semibold text-slate-600">
+                          Student
+                        </th>
+
+                        <th className="text-left p-4 font-semibold text-slate-600">
+                          Matric No
+                        </th>
+
+                        {summary.sessions.map((session, index) => (
+                          <th
+                            key={session.id}
+                            className="text-center p-4 font-semibold text-slate-600 whitespace-nowrap"
+                          >
+                            Class {index + 1}
+                          </th>
+                        ))}
+
+                        <th className="text-center p-4 font-semibold text-slate-600">
+                          %
+                        </th>
+                      </tr>
+                    </thead>
+
+                    <tbody className="divide-y divide-slate-100">
+                      {summary.students.length === 0 ? (
+                        <tr>
+                          <td
+                            colSpan={summary.sessions.length + 3}
+                            className="p-6 text-center text-slate-500"
+                          >
+                            No student is offering this course yet.
+                          </td>
+                        </tr>
+                      ) : (
+                        summary.students.map((student) => (
+                          <tr key={student.id} className="hover:bg-slate-50">
+                            <td className="p-4 font-medium text-slate-900 whitespace-nowrap">
+                              {student.fullName}
+                            </td>
+
+                            <td className="p-4 text-slate-500 whitespace-nowrap">
+                              {student.identifier}
+                            </td>
+
+                            {summary.sessions.map((session) => {
+                              const record = student.attendanceBySession.find(
+                                (item) => item.sessionId === session.id
+                              );
+
+                              return (
+                                <td
+                                  key={session.id}
+                                  className="p-4 text-center"
+                                  title={new Date(
+                                    session.startsAt
+                                  ).toLocaleString("en-NG")}
+                                >
+                                  {record?.attended ? (
+                                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 font-bold">
+                                      ✓
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-rose-100 text-rose-700 font-bold">
+                                      ×
+                                    </span>
+                                  )}
+                                </td>
+                              );
+                            })}
+
+                            <td className="p-4 text-center">
+                              <span
+                                className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${
+                                  student.percentage < 75 &&
+                                  student.totalSessions > 0
+                                    ? "bg-rose-100 text-rose-700"
+                                    : "bg-emerald-100 text-emerald-700"
+                                }`}
+                              >
+                                {student.totalSessions === 0
+                                  ? "0%"
+                                  : `${student.percentage}%`}
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+          </>
+        )}
+      </div>
+    </main>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: string | number;
+  accent: string;
+}) {
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+      <p className="text-sm font-medium text-slate-500">{label}</p>
+      <p className={`mt-3 text-2xl font-bold ${accent}`}>{value}</p>
     </div>
   );
 }
