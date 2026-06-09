@@ -87,6 +87,9 @@ export default async function StudentDashboard() {
           studentId: student.id,
           session: {
             courseId: sc.course.id,
+            expiresAt: {
+              lt: new Date(),
+            },
           },
         },
       });

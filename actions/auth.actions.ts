@@ -74,7 +74,7 @@ export async function registerUser(data: any) {
           );
         }
 
-        await tx.course.updateMany({
+        const updateResult = await tx.course.updateMany({
           where: {
             id: { in: courseIds },
             lecturerId: null,
@@ -83,7 +83,14 @@ export async function registerUser(data: any) {
             lecturerId: newUser.id,
           },
         });
+
+        if (updateResult.count !== courseIds.length) {
+          throw new Error(
+            "One or more selected courses were just assigned to another lecturer. Please refresh and try again."
+          );
+        }
       }
+      
 
       if (role === "STUDENT") {
         const availableCourses = await tx.course.findMany({
