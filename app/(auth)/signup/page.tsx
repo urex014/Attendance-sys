@@ -125,13 +125,15 @@ export default function Signup() {
 
         <div className="space-y-6">
           <h1 className="text-5xl text-white font-medium tracking-tighter leading-tight">
-            Attend all your lectures.<br />
+            Try to attend al your lectures.<br />
             <span className="text-zinc-500">Beat the 75%.</span>
           </h1>
           <p className="text-zinc-400 max-w-md text-sm leading-relaxed">
             Prevent being chased out of the exam hall.
             Remember, meeting the 75% threshold is mandatory for exam eligibility.
             No excuses.
+            Prevent being chased out of the exam hall. 
+            Remember, we no send you for here.
           </p>
         </div>
 

@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { auth } from '@/lib/auth';
 import BottomNav from '@/components/dashboard/BottomNav';
 import prisma from '@/lib/prisma';
+import { signOut } from "next-auth/react";
 
 export default async function StudentDashboardLayout({
   children,

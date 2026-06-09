@@ -9,7 +9,7 @@ export const authConfig = {
     authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = !!auth?.user;
       const isOnDashboard = nextUrl.pathname.startsWith('/dashboard');
-      const isOnOnboarding = nextUrl.pathname.startsWith('/onboarding');
+      const isOnOnboarding = nextUrl.pathname.startsWith('/onboarding/student') || nextUrl.pathname.startsWith('/onboarding/lecturer');
 
       if (isOnDashboard || isOnOnboarding) {
         if (isLoggedIn) return true;

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // actions/auth.actions.ts
 "use server";
 
