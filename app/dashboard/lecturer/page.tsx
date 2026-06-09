@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import QRCode from "react-qr-code";
 
 import { 
   BookOpen, 
@@ -265,31 +266,42 @@ export default function LecturerDashboard() {
                 ) : (
                   /* Active Session Output UI (Replaces the Alert!) */
                   <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div className="flex items-center gap-2 mb-4">
-                      <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                      <span className="text-xs font-medium text-emerald-500 uppercase tracking-wide">Session Active</span>
-                    </div>
-                    
-                    <div className="bg-white p-6 rounded-lg flex flex-col items-center justify-center mb-6">
-                      <QrCode className="h-32 w-32 text-zinc-950 mb-4" />
-                      <p className="text-xs text-zinc-500 font-medium uppercase tracking-wider text-center">Session Token</p>
-                      <p className="text-xl font-mono font-bold text-zinc-950 text-center break-all">
-                        {activeSession.token}
-                      </p>
-                    </div>
+            <div className="flex items-center gap-2 mb-4">
+              <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
+              <span className="text-xs font-medium text-emerald-500 uppercase tracking-wide">Session Active</span>
+            </div>
+            
+            <div className="bg-white p-6 rounded-lg flex flex-col items-center justify-center mb-6">
+              {/* ACTUAL DYNAMIC QR CODE */}
+              <div className="mb-4 p-2 bg-white rounded-md">
+                <QRCode 
+                  value={activeSession.token} 
+                  size={160} // Size in pixels
+                  level="H" // High error correction so it scans easily from far away
+                  className="text-zinc-950"
+                />
+              </div>
+              
+              <p className="text-xs text-zinc-500 font-medium uppercase tracking-wider text-center">Session Token</p>
+              <p className="text-xl font-mono font-bold text-zinc-950 text-center break-all">
+                {activeSession.token}
+              </p>
+            </div>
 
-                    <div className="flex justify-between items-center text-sm border-t border-zinc-800 pt-4">
-                      <span className="text-zinc-400">Auto-expires at:</span>
-                      <span className="font-semibold text-amber-400">{activeSession.expiresAt}</span>
-                    </div>
+            <div className="flex justify-between items-center text-sm border-t border-zinc-800 pt-4 mb-4">
+              <span className="text-zinc-400">Auto-expires at:</span>
+              <span className="font-semibold text-amber-400">{activeSession.expiresAt}</span>
+            </div>
 
-                    <button
-                      onClick={() => setActiveSession(null)}
-                      className="w-full h-10 mt-6 rounded-md bg-zinc-800 text-white text-sm font-medium hover:bg-zinc-700 transition-colors"
-                    >
-                      Close View
-                    </button>
-                  </div>
+            {/* New End Session Button */}
+            <button
+              onClick={setActiveSession.bind(null, null)} // For demo purposes, just clear the session. In production, you'd call an API to end it.
+              
+              className="w-full h-10 flex items-center justify-center gap-2 rounded-md bg-red-500/10 text-red-500 text-sm font-semibold hover:bg-red-500/20 transition-colors disabled:opacity-50"
+            >
+              End session
+            </button>
+          </div>
                 )}
               </div>
             </div>
